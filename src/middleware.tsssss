@@ -1,0 +1,57 @@
+import { jwtDecode } from "jwt-decode";
+import { cookies } from "next/headers";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { authKey } from "./constant/authkey";
+
+type TRole = keyof typeof roleBasePrivateRoute;
+const commonPrivateRoutes = ["/dashboard"];
+const roleBasePrivateRoute = {
+  super_admin: [/^\/dashboard\/super_admin/],
+  admin: [/^\/dashboard\/admin/],
+  manager: [/^\/dashboard\/manager/],
+};
+const authRoutes = ["/login", "/verify"];
+
+// This function can be marked `async` if using `await` inside
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const accessToken = cookies().get(authKey)?.value;
+  if (!accessToken) {
+    if (authRoutes.includes(pathname)) {
+      return NextResponse.next();
+    } else {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
+  }
+
+  if (accessToken && commonPrivateRoutes.includes(pathname)) {
+    return NextResponse.next();
+  }
+
+  let decodedData = null;
+  if (accessToken) {
+    decodedData = jwtDecode(accessToken) as any;
+  }
+  const role = decodedData?.role;
+
+  //   if (role === "admin" && pathname.startsWith("/dashboard/admin")) {
+  //     return NextResponse.next();
+  //   }
+  //   if (role === "manager" && pathname.startsWith("/dashboard/manager")) {
+  //     return NextResponse.next();
+  //   }
+
+  if (role && roleBasePrivateRoute[role as TRole]) {
+    const routes = roleBasePrivateRoute[role as TRole];
+    if (routes.some((route) => pathname.match(route))) {
+      return NextResponse.next();
+    }
+  }
+  return NextResponse.redirect(new URL("/dashboard", request.url));
+}
+
+// See "Matching Paths" below to learn more
+export const config = {
+  matcher: ["/login", "/verify", "/dashboard/:page*"],
+};
